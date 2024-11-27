@@ -22,7 +22,8 @@ class Editor extends JFrame implements ActionListener {
         }
     }
 
-    //initialize here
+    Stack<EditAction> undoStack = new Stack<>();
+    Stack<EditAction> redoStack =new Stack<>();
     boolean trackingChanges = true; // To avoid recursive calls during undo/redo
 
     Editor() {
@@ -38,7 +39,44 @@ class Editor extends JFrame implements ActionListener {
         textArea = new JTextArea();
 
         // Track text changes
-        //TRACK THOSE CHANGES HERE HERE
+        textArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                if (trackingChanges) handleInsert(e);
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                if (trackingChanges) handleDelete(e);
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                // Not needed for plain text edits
+            }
+
+            private void handleInsert(DocumentEvent e) {
+                try {
+                    int offset = e.getOffset();
+                    String insertedText = e.getDocument().getText(offset, e.getLength());
+                    undoStack.push(new EditAction(true, offset, insertedText));
+                    redoStack.clear(); // Clear redo stack after a new edit
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+
+            private void handleDelete(DocumentEvent e) {
+                try {
+                    int offset = e.getOffset();
+                    String deletedText = textArea.getText(offset, e.getLength());
+                    undoStack.push(new EditAction(false, offset, deletedText));
+                    redoStack.clear(); // Clear redo stack after a new edit
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
 
         // Menu bar
         JMenuBar menuBar = new JMenuBar();
@@ -130,7 +168,49 @@ class Editor extends JFrame implements ActionListener {
         }
     }
 
-    //here undo redo
+    private void undo() {
+        if (!undoStack.isEmpty()) {
+            EditAction action = undoStack.pop();
+            redoStack.push(action);
+
+            trackingChanges = false; // Disable tracking during undo
+            try {
+                if (action.isInsert) {
+                    // Undo insertion by removing the text
+                    textArea.replaceRange("", action.position, action.position + action.text.length());
+                } else {
+                    // Undo deletion by reinserting the text
+                    textArea.insert(action.text, action.position);
+                }
+            } finally {
+                trackingChanges = true; // Re-enable tracking
+            }
+        } else {
+            JOptionPane.showMessageDialog(frame, "Nothing to Undo");
+        }
+    }
+
+    private void redo() {
+        if (!redoStack.isEmpty()) {
+            EditAction action = redoStack.pop();
+            undoStack.push(action);
+
+            trackingChanges = false; // Disable tracking during redo
+            try {
+                if (action.isInsert) {
+                    // Redo insertion by adding the text back
+                    textArea.insert(action.text, action.position);
+                } else {
+                    // Redo deletion by removing the text again
+                    textArea.replaceRange("", action.position, action.position + action.text.length());
+                }
+            } finally {
+                trackingChanges = true; // Re-enable tracking
+            }
+        } else {
+            JOptionPane.showMessageDialog(frame, "Nothing to Redo");
+        }
+    }
 
     private void saveFile() {
         JFileChooser fileChooser = new JFileChooser("f:");
